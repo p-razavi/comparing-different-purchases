@@ -1,0 +1,1035 @@
+---
+title: "Project: <b>Experiential and Material Purchases across Cultures</b>"
+author: "Pooya Razavi"
+output: 
+  html_document: 
+    df_print: paged
+    toc: yes
+    toc_float: yes
+    theme: cerulean
+    highlight: pygments
+editor_options: 
+  chunk_output_type: console
+---
+
+This document goes through the analyses reported in the main manuscript titled "Benefits Associated with Experiential and Material Purchases May Depend on Culture." You can find the post-print, which describes the study and data analyses/interpretation, [here](https://osf.io/gtz8f/); and you can find the data and codebook [here](https://osf.io/n39gj/). 
+
+# Setup
+
+First, set the working directory and read in the data file (available on OSF).
+
+```{r setup, include=FALSE}
+
+options(scipen=99999)
+options(digits=6)
+
+
+library(tidyverse)
+library(foreign)
+library(psych)
+library(emmeans)
+library(lmerTest)
+library(lavaan)
+library(kableExtra)
+library(knitr)
+
+#Set the working directory
+#setwd("[...]")
+
+df <- read.spss("PurchaseCulture_data.sav", use.value.labels = FALSE, to.data.frame = TRUE)
+
+#str(df)
+```
+
+Next, label the categorical variables and exclude the non-compliant responses:
+_Data exclusion process is explained in the manuscript._
+
+```{r}
+
+#fixing the factor levels
+df$country <- factor(df$country,levels = c(1,2,3),labels = c("Malaysia", "Iran", "US"))
+
+df$assigned_purchase <- factor(df$assigned_purchase,levels = c(1,2,3,4),labels = c("mat_sol", "exp_sol", "mat_soc","exp_soc"))
+
+df$purchase_type <- factor(df$purchase_type,levels = c(1,2,3,4),labels = c("mat_sol", "exp_sol", "mat_soc","exp_soc"))
+
+df$excluded <- factor(df$excluded,levels = c(1,2),labels = c("Yes", "No"))
+
+df$gender <- factor(df$gender,levels = c(1,2,3,4,5),labels = c("male", "female","transgender_male","transgender_female","genderqueer"))
+
+#excluding the non-compliant data
+df1 <- df[which(df$excluded == "No"),]
+rm(df)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+<b>Setup the binary variables:</b><br>
+mat_vs_exp: material vs. experiential purchase<br>
+sol_vs_soc: solitary vs. social purchase<br>
+
+```{r creating binary variables}
+#material vs. experiential
+levels(df1$purchase_type)
+values1 <- c("material", "experiential","material", "experiential")
+
+          df1$mat_vs_exp <- values1[df1$purchase_type] %>% 
+              as.factor()
+          levels(df1$mat_vs_exp)
+
+
+#solitary vs. social
+values2 <- c("solitary", "solitary","social", "social")
+
+          df1$sol_vs_soc <- values2[df1$purchase_type] %>% 
+              as.factor()
+          levels(df1$sol_vs_soc)
+
+
+```
+
+# Purchase characteristics
+Here we look into the purchase characteristics, as reported in the manuscript.
+
+## Price
+
+```{r}
+#creating a df for each country
+df_Iran <- filter(df1, country == "Iran")
+df_Malaysia <- filter(df1, country == "Malaysia")
+df_US <- filter(df1, country == "US")
+
+
+#price (per country)
+psych::describeBy(df1$price, group = list(df1$country)) #this gives us the medians
+
+#And the lines below give us the Winsorized SD
+psych::winsor.sd(df_Iran$price)
+psych::winsor.sd(df_Malaysia$price)
+psych::winsor.sd(df_US$price)
+
+
+
+#Same statistics for each purchase category (for the Table 3 in the manuscript)
+
+    #medians
+by(df_Iran$price, df_Iran$assigned_purchase, psych::interp.median)
+by(df_Malaysia$price, df_Malaysia$assigned_purchase, psych::interp.median)
+by(df_US$price, df_US$assigned_purchase, psych::interp.median)
+
+    #Winsorized SDs
+by(df_Iran$price, df_Iran$assigned_purchase, psych::winsor.sd)
+by(df_Malaysia$price, df_Malaysia$assigned_purchase, psych::winsor.sd)
+by(df_US$price, df_US$assigned_purchase, psych::winsor.sd)
+
+
+#Welch's test comparing the prices across purchase types (reported in Table 3)
+    oneway.test(price ~ assigned_purchase, data = df_Iran, var.equal = FALSE)
+      lsr::etaSquared( aov(price~assigned_purchase , df_Iran))
+    oneway.test(price ~ assigned_purchase, data = df_Malaysia, var.equal = FALSE)
+      lsr::etaSquared( aov(price~assigned_purchase , df_Malaysia))
+    oneway.test(price ~ assigned_purchase, data = df_US, var.equal = FALSE)
+      lsr::etaSquared( aov(price~assigned_purchase , df_US))
+
+      
+```
+
+
+## Time elapsed
+
+```{r}
+#descriptives
+psych::describe(df1$time) #this gives us the median
+
+psych::winsor.sd(df1$time) #this gives us the Winsorized SD
+
+psych::describeBy(df1$time, group = df1$assigned_purchase) #this gives us the median for each purchase category
+
+    #Winsorized SDs for each purchase category
+by(df1$time, df1$assigned_purchase, psych::winsor.sd)
+
+
+#testing the difference between purchase categories and countries
+    oneway.test(time ~ assigned_purchase, data = df1, var.equal = FALSE)
+        lsr::etaSquared( aov(time~assigned_purchase , df1))
+
+    oneway.test(time ~ country, data = df1, var.equal = FALSE)
+        lsr::etaSquared( aov(time~country , df1))
+
+#Same statistics for each purchase category (for the Table 3 in the manuscript)
+
+    #medians
+by(df_Iran$time, df_Iran$assigned_purchase, psych::describe)
+by(df_Malaysia$time, df_Malaysia$assigned_purchase, psych::describe)
+by(df_US$time, df_US$assigned_purchase, psych::describe)
+
+    #Winsorized SDs
+by(df_Iran$time, df_Iran$assigned_purchase, psych::winsor.sd)
+by(df_Malaysia$time, df_Malaysia$assigned_purchase, psych::winsor.sd)
+by(df_US$time, df_US$assigned_purchase, psych::winsor.sd)
+
+    #Comparing purchases
+    oneway.test(time ~ assigned_purchase, data = df_Iran, var.equal = FALSE)
+        lsr::etaSquared( aov(time~assigned_purchase , df_Iran))
+
+    oneway.test(time ~ assigned_purchase, data = df_Malaysia, var.equal = FALSE)
+        lsr::etaSquared( aov(time~assigned_purchase , df_Malaysia))
+
+    oneway.test(time ~ assigned_purchase, data = df_US, var.equal = FALSE)
+        lsr::etaSquared( aov(time~assigned_purchase , df_US))
+
+```
+
+
+# Manipulation checks
+
+## Essentialness
+Analyses of the participants' ratings of how essential or non-essential they considered the purchase to be.
+
+```{r}
+#descriptives
+psych::describe(df1$essential)
+
+#comparing purchases  
+    psych::describeBy(df1$essential, group = df1$assigned_purchase)
+    
+    oneway.test(essential ~ assigned_purchase, data = df1, var.equal = FALSE)
+        lsr::etaSquared( aov(essential~assigned_purchase , df1))
+
+
+#Same statistics for each purchase category (for the Table 3 in the manuscript)
+
+      psych::describeBy(df1$essential, group = list(df1$assigned_purchase, df1$country), mat = TRUE)
+      
+      oneway.test(essential ~ assigned_purchase, data = df_Iran, var.equal = FALSE)
+          lsr::etaSquared( aov(essential~assigned_purchase , df_Iran))
+
+      oneway.test(essential ~ assigned_purchase, data = df_Malaysia, var.equal = FALSE)
+          lsr::etaSquared( aov(essential~assigned_purchase , df_Malaysia))
+
+      oneway.test(essential ~ assigned_purchase, data = df_US, var.equal = FALSE)
+          lsr::etaSquared( aov(essential~assigned_purchase , df_US))
+
+
+```
+
+
+## Material-experiential
+Analyses of the participants' ratings of how material or experiential they considered the purchase to be.
+
+```{r}
+#descriptives
+psych::describeBy(df1$material_experiential, group = df1$mat_vs_exp)
+
+#comparison of the two purchase types (Welch's t-test)
+t.test(df1$material_experiential ~ df1$mat_vs_exp)
+  #effect size
+  lsr::cohensD(df1$material_experiential ~ df1$mat_vs_exp)
+
+
+#Same statistics for each purchase category (for the Table 3 in the manuscript)
+psych::describeBy(df1$material_experiential, group = df1$assigned_purchase, mat = TRUE)
+  
+  psych::describeBy(df1$material_experiential, group = list(df1$assigned_purchase, df1$country), mat = TRUE)
+
+  #t-test per country
+t.test(df_Iran$material_experiential ~ df_Iran$mat_vs_exp)
+  lsr::cohensD(df_Iran$material_experiential ~ df_Iran$mat_vs_exp)
+
+t.test(df_Malaysia$material_experiential ~ df_Malaysia$mat_vs_exp)
+  lsr::cohensD(df_Malaysia$material_experiential ~ df_Malaysia$mat_vs_exp)
+
+t.test(df_US$material_experiential ~ df_US$mat_vs_exp)
+  lsr::cohensD(df_US$material_experiential ~ df_US$mat_vs_exp)
+  
+
+```
+
+# Material vs. Experiential
+
+## Outcome: Emotions
+
+### Scoring
+
+_<b>First, scoring the emotion variables</b>, and attaching them to the dataframe_<br>
+
+Positive self-focused emotions: amused/having fun, proud/good about myself, uplifted/inspired/elevated, happy/pleased/joyful<br>
+Positive other-focused emotions: anxious/nervous, sad/depressed/down, angry/irritable/frustrated, guilty/embarrassed/ashamed<br>
+Negative self-focused emotions: grateful/appreciative/thankful, affectionate/loving/caring, compassionate/sympathetic, cared about/loved/connected<br>
+Negative other-focused emotions: lonely/isolated/resentful, criticized/blamed<br>
+
+```{r emotion variable scoring}
+
+##first, Emotion categories
+Emotions <- df1[, 6:19]
+my.keys.list <- list(
+             pos_self = c("emotion_01", "emotion_09", "emotion_11", "emotion_14"), 
+            neg_self = c("emotion_02", "emotion_06", "emotion_10", "emotion_13"),
+            pos_other = c("emotion_05", "emotion_07", "emotion_08", "emotion_12"),
+             neg_other = c("emotion_03", "emotion_04")
+)
+
+Emotion.categories <- scoreItems(my.keys.list, Emotions, impute = "none")
+#Emotion.categories
+
+df1 <- cbind(df1, Emotion.categories$scores)
+
+```
+
+### Internal consistency
+
+Different metrics for internal consistency (as reported in Table 5):
+
+```{r}
+Emotion.categories$alpha
+Emotion.categories$G6
+Emotion.categories$av.r
+
+#now for each country
+emo_iran <- df1[df1$country == "Iran", 6:19]
+iran_emo <- scoreItems(my.keys.list, emo_iran, impute = "none")
+iran_emo$alpha
+iran_emo$G6
+iran_emo$av.r
+
+emo_malaysia <- df1[df1$country == "Malaysia", 6:19]
+malaysia_emo <- scoreItems(my.keys.list, emo_malaysia, impute = "none")
+malaysia_emo$alpha
+malaysia_emo$G6
+malaysia_emo$av.r
+
+emo_US <- df1[df1$country == "US", 6:19]
+US_emo <- scoreItems(my.keys.list, emo_US, impute = "none")
+US_emo$alpha
+US_emo$G6
+US_emo$av.r
+
+```
+
+
+<b>Creating a long dataframe based on the two positive emotion category scores</b>
+_NOTE: As explained in the manuscript, negative outcomes (including negative emotions), which were included for exploratory purposes are not reported (due to very low variance)._
+
+```{r}
+#a dataframe with relevant variables
+    emotion_df <- df1[,c("country", "sub_id", "purchase_type", "mat_vs_exp", "sol_vs_soc" ,"pos_self","pos_other","neg_self","neg_other")]  
+    colnames(emotion_df) <- c("country", "sub_id", "purchase_type", "mat_vs_exp", "sol_vs_soc" ,"pos_self","pos_other","neg_self","neg_other")
+    str(emotion_df)
+
+#making the dataframe long  (only using positive emotion categories)
+    emotion_df_long <- tidyr::gather(emotion_df, "emotion_type", "emo_score", 6:7) 
+    emotion_df_long$emotion_type <- as.factor(emotion_df_long$emotion_type)
+    str(emotion_df_long)
+    
+```
+
+### Descriptives
+
+```{r}
+#overal mean of each emotion type
+psych::describeBy(emotion_df_long$emo_score, group = emotion_df_long$emotion_type)
+
+
+#mean of each emotion type by material vs experiential
+psych::describeBy(emotion_df_long$emo_score, group = list(emotion_df_long$mat_vs_exp,emotion_df_long$emotion_type))
+
+#each emotion type by material vs experiential AND country
+psych::describeBy(emotion_df_long$emo_score, group = list(emotion_df_long$country, emotion_df_long$mat_vs_exp,emotion_df_long$emotion_type), mat = TRUE)
+
+#each emotion type BY purchase type (4 categories)
+psych::describeBy(emotion_df_long$emo_score, group = list(emotion_df_long$purchase_type,emotion_df_long$emotion_type), mat = TRUE)
+
+```
+
+
+### Model1
+_IV: material vs. experiential - Outcome: Emotions_
+
+```{r warning=FALSE, message=FALSE}
+contrasts(emotion_df_long$mat_vs_exp) <- contr.sum
+contrasts(emotion_df_long$country) <- contr.sum
+contrasts(emotion_df_long$emotion_type) <- contr.sum
+
+#First, we run the omnibus model in lmer
+model1 <- lmer(emo_score ~ mat_vs_exp*emotion_type*country + (1 | sub_id), data = emotion_df_long)
+#summary(model1)
+#anova(model1, type = "III")
+
+    
+#Next, we import the model to emmeans to conduct comparisons
+
+    #adjustments to emmeans due to large sample size
+    emm_options(pbkrtest.limit = 6000, lmerTest.limit = 6000)
+
+    #running the main model in emmeans
+    em_model1 <- emmeans::emmeans(model1, ~mat_vs_exp*emotion_type*country) 
+    
+    #the plot of all data
+    plot(em_model1, comparisons = TRUE, xlab = "Means", ylab = "Intensity of Emotion Type for each Purchase Type")
+    
+    
+    #difference between material and experiential in each country (Table 4)
+          #Malaysia  
+             (em_model1 %>% 
+        pairs(simple = c("mat_vs_exp"), combine = TRUE, adjust = "holm"))[1:2] 
+          
+            ((em_model1 %>% 
+        pairs(simple = c("mat_vs_exp"), combine = TRUE, adjust = "holm"))[1:2] ) %>% 
+      confint(adjust = "mvt")
+          
+          #Iran
+          (em_model1 %>% 
+        pairs(simple = c("mat_vs_exp"), combine = TRUE, adjust = "holm"))[3:4]
+             
+           ((em_model1 %>% 
+        pairs(simple = c("mat_vs_exp"), combine = TRUE, adjust = "holm"))[3:4]) %>% 
+      confint(adjust = "mvt")
+          
+          #US
+             (em_model1 %>% 
+        pairs(simple = c("mat_vs_exp"), combine = TRUE, adjust = "holm"))[5:6] 
+
+            ((em_model1 %>% 
+        pairs(simple = c("mat_vs_exp"), combine = TRUE, adjust = "holm"))[5:6] ) %>% 
+        confint(adjust = "mvt")
+
+   
+    
+```
+
+## Outcome: Happiness
+
+
+### Scoring
+_<b>Scoring the happiness and regret construct</b>, and attaching them to the dataframe_
+
+General Satisfaction: "overall_happiness", "life_satisfaction" (see the codebook)<br>
+Regret: The three regret items (see the codebook)<br>
+
+```{r happiness/regret scoring}
+
+hap_reg <- df1[, 21:25]
+my.keys.list <- list(
+             gen_happiness = c("overall_happiness", "life_satisfaction"), 
+            Regret = c("-regret1_reverse", "regret2", "regret3")
+)
+
+happiness.regret <- scoreItems(my.keys.list, hap_reg, impute = "none")
+#happiness.regret
+
+df1 <- cbind(df1, happiness.regret$scores)
+
+```
+
+### Internal consistency
+
+Different metrics for internal consistency (as reported in Table 5):
+
+```{r}
+#internal consistencies
+happiness.regret$alpha
+happiness.regret$G6
+happiness.regret$av.r
+
+#now for each country
+hap_iran <- df1[df1$country == "Iran", 21:25]
+iran_hap <- scoreItems(my.keys.list, hap_iran, impute = "none")
+iran_hap$alpha
+iran_hap$G6
+iran_hap$av.r
+
+hap_malaysia <- df1[df1$country == "Malaysia", 21:25]
+malaysia_hap <- scoreItems(my.keys.list, hap_malaysia, impute = "none")
+malaysia_hap$alpha
+malaysia_hap$G6
+malaysia_hap$av.r
+
+hap_US <- df1[df1$country == "US", 21:25]
+US_hap <- scoreItems(my.keys.list, hap_US, impute = "none")
+US_hap$alpha
+US_hap$G6
+US_hap$av.r
+
+```
+
+
+<b>Creating a long dataframe based on the two happiness scores (instant and general)</b>
+
+```{r}
+#a dataframe with relevant variables
+    hap_df <- df1[,c("country", "sub_id", "purchase_type", "mat_vs_exp", "sol_vs_soc" ,"inst_happiness","gen_happiness","Regret")]  
+    colnames(hap_df) <- c("country", "sub_id", "purchase_type", "mat_vs_exp", "sol_vs_soc" ,"inst_happiness","gen_happiness","regret")
+    str(hap_df)
+
+#making the dataframe long  
+    hap_df_long <- tidyr::gather(hap_df, "hap_type", "hap_score", 6:7) #6:7 must be the target variables
+    hap_df_long$hap_type <- as.factor(hap_df_long$hap_type)
+    str(hap_df_long)
+    
+```
+
+
+### Model2 
+_IV: material vs. experiential - Outcome: Happiness_
+
+```{r warning=FALSE, message=FALSE}
+contrasts(hap_df_long$mat_vs_exp) <- contr.sum
+contrasts(hap_df_long$country) <- contr.sum
+contrasts(hap_df_long$hap_type) <- contr.sum
+
+#First, we run the omnibus model in lmer
+model2 <- lmer(hap_score ~ mat_vs_exp*hap_type*country + (1 | sub_id), data = hap_df_long)
+#summary(model2)
+#anova(model2, type = "III")
+
+#Then we import the model into emmeans to conduct the comparison analyses:
+    #adjustments to emmeans due to large sample size
+    emm_options(pbkrtest.limit = 6000, lmerTest.limit = 6000)
+
+    #running the main model in emmeans
+    em_model2 <- emmeans::emmeans(model2, ~mat_vs_exp*hap_type*country) 
+    
+    #the plot of all data
+    plot(em_model2, comparisons = TRUE, xlab = "Means", ylab = "Ratings for each Purchase Type")
+    
+    
+    #difference between material and experiential in each country (Table 4)
+          #Malaysia  
+             (em_model2 %>% 
+        pairs(simple = c("mat_vs_exp"), combine = TRUE, adjust = "holm"))[1:2] 
+    
+            ((em_model2 %>% 
+        pairs(simple = c("mat_vs_exp"), combine = TRUE, adjust = "holm"))[1:2] ) %>% 
+      confint(adjust = "mvt")
+         
+         #Iran
+              (em_model2 %>% 
+        pairs(simple = c("mat_vs_exp"), combine = TRUE, adjust = "holm"))[3:4]
+
+              ((em_model2 %>% 
+        pairs(simple = c("mat_vs_exp"), combine = TRUE, adjust = "holm"))[3:4]) %>% 
+      confint(adjust = "mvt")
+    
+          #US
+             (em_model2 %>% 
+        pairs(simple = c("mat_vs_exp"), combine = TRUE, adjust = "holm"))[5:6] 
+
+            ((em_model2 %>% 
+        pairs(simple = c("mat_vs_exp"), combine = TRUE, adjust = "holm"))[5:6] ) %>% 
+        confint(adjust = "mvt")
+
+         
+```
+
+
+## Outcome: Cognitive Evaluations
+
+PCA, CFA, and measurement invariance analyses of the ad-hoc measure of cognitive evaluations.
+
+### PCA
+
+```{r}
+#Whole dataset
+#creating a dataframe without NAs
+cog_evaluation_PCA <- df1[complete.cases(df1[, 26:33]), 26:33]
+
+#first, max # of components (i.e., 8)
+        PCA_max <- psych::principal(cog_evaluation_PCA, nfactors = 8, rotate = "oblimin") 
+        PCA_max$values #eigenvalues
+        plot(PCA_max$values, type = "b", xlab = "Component", ylab = "Eigenvalue")
+        abline(a = 1, b = 0, col = "red", lty = 2)#screeplot        
+#2-component model
+        PCA_2 <- psych::principal(cog_evaluation_PCA, nfactors = 2, oblique.scores = FALSE) 
+        psych::kaiser(PCA_2, rotate = "oblimin")
+
+#Iran
+#creating a dataframe without NAs
+cog_evaluation_Iran_PCA <- df_Iran[complete.cases(df_Iran[, 26:33]), 26:33]
+
+#2-component PCA
+        PCA_2_Iran <- psych::principal(cog_evaluation_Iran_PCA, nfactors = 2, oblique.scores = FALSE) 
+        psych::kaiser(PCA_2_Iran, rotate = "oblimin")        
+
+#Malaysia
+#creating a dataframe without NAs
+cog_evaluation_Malaysia_PCA <- df_Malaysia[complete.cases(df_Malaysia[, 26:33]), 26:33]
+
+#2-component PCA
+        PCA_2_Malaysia <- psych::principal(cog_evaluation_Malaysia_PCA, nfactors = 2, oblique.scores = FALSE) 
+        psych::kaiser(PCA_2_Malaysia, rotate = "oblimin")      
+        
+#US
+#creating a dataframe without NAs
+cog_evaluation_US_PCA <- df_US[complete.cases(df_US[, 26:33]), 26:33]
+
+#2-component PCA
+        PCA_2_US <- psych::principal(cog_evaluation_US_PCA, nfactors = 2, oblique.scores = FALSE) 
+        psych::kaiser(PCA_2_US, rotate = "oblimin") 
+        
+```
+
+### CFA
+
+```{r}
+#Whole dataset
+
+cog_eval_model <- ' rel_enhance =~ imp_friendship + connected + less_lonely + pos_memory 
+                  self_elevate =~ curious + awe_wonder + inc_knowledge + ref_identity 
+                  '
+
+fit <- cfa(cog_eval_model, estimator = "WLSM", data = df1)
+fitmeasures(fit)[c(27,28,44:46,50,59)]
+summary(fit)
+modindices(fit, minimum.value = 20) #conceptually, it makes sense that the two items "purchase improved my friendship" and "purchase made me feel more connected" have correlated errors.
+
+#modified model
+cog_eval_model_mod <- ' rel_enhance =~ imp_friendship + connected + less_lonely + pos_memory 
+                  self_elevate =~ curious + awe_wonder + inc_knowledge + ref_identity 
+                  imp_friendship ~~ connected
+                  '
+
+fit <- cfa(cog_eval_model_mod, estimator = "WLSM", data = df1)
+fitmeasures(fit)[c(27,28,44:46,50,59)]
+summary(fit)
+
+fitmeasures(fit) %>%
+  knitr::kable() %>% 
+  scroll_box(height = "200px")
+
+#Iran
+fit_iran <- cfa(cog_eval_model_mod, estimator = "WLSM", data = df_Iran)
+fitmeasures(fit_iran)[c(27,28,44:46,50,59)]
+summary(fit_iran)
+
+fitmeasures(fit_iran) %>%
+  knitr::kable() %>% 
+  scroll_box(height = "200px")
+
+#US
+fit_US <- cfa(cog_eval_model_mod, estimator = "WLSM", data = df_US)
+fitmeasures(fit_US)[c(27,28,44:46,50,59)]
+summary(fit_US)
+
+fitmeasures(fit_US) %>%
+  knitr::kable() %>% 
+  scroll_box(height = "200px")
+
+#Malaysia
+fit_MY <- cfa(cog_eval_model_mod, estimator = "WLSM", data = df_Malaysia)
+fitmeasures(fit_MY)[c(27,28,44:46,50,59)]
+summary(fit_MY)
+
+fitmeasures(fit_MY) %>%
+  knitr::kable() %>% 
+  scroll_box(height = "200px")
+```
+
+
+### Measurement Invariance
+
+```{r}
+#Configural
+
+fit_mi <- cfa(cog_eval_model_mod, 
+              data = df1,
+              estimator = "WLSM",
+              group = "country")
+
+fitmeasures(fit_mi)[c(27,28,44:46,50,59)]
+summary(fit_mi)
+
+fitmeasures(fit_mi) %>%
+  kable() %>% 
+  scroll_box(height = "200px")
+
+
+#Metric
+fit_mi_metric <- cfa(cog_eval_model_mod, 
+              data = df1,
+              estimator = "WLSM",
+              group = "country",
+              group.equal = c("loadings"))
+
+fitmeasures(fit_mi_metric)[c(27,28,44:46,50,59)]
+summary(fit_mi_metric)
+
+fitmeasures(fit_mi_metric) %>%
+  kable() %>% 
+  scroll_box(height = "200px")
+
+#Scalar
+fit_mi_scalar <- cfa(cog_eval_model_mod, 
+              data = df1,
+              estimator = "WLSM",
+              group = "country",
+              group.equal = c("loadings", "intercepts"))
+
+fitmeasures(fit_mi_scalar)[c(27,28,44:46,50,59)]
+summary(fit_mi_scalar)
+
+fitmeasures(fit_mi_scalar) %>%
+  kable() %>% 
+  scroll_box(height = "200px")
+
+
+#Strict
+fit_mi_strict <- cfa(cog_eval_model_mod, 
+              data = df1,
+              estimator = "WLSM",
+              group = "country",
+              group.equal = c("loadings", "intercepts", "residuals"))
+
+fitmeasures(fit_mi_strict)[c(27,28,44:46,50,59)]
+summary(fit_mi_strict)
+
+fitmeasures(fit_mi_strict) %>%
+  kable() %>% 
+  scroll_box(height = "200px")
+
+```
+
+
+### Scoring
+_<b>Scoring the evaluative items</b>, and attaching them to the dataframe_
+
+Two categories (based on PCA):<br>
+Relational Enhancement: "imp_friendship", "connected", "less_lonely", "pos_memory" (see the codebook)<br>
+Self-elevation: "curious", "awe_wonder", "inc_knowledge","ref_identity" (see the codebook)<br>
+
+```{r evaluation scoring}
+
+cog_evaluation <- df1[, 26:33]
+my.keys.list <- list(
+             rel_enhance = c("imp_friendship", "connected", "less_lonely", "pos_memory"), 
+            self_elevate = c("curious", "awe_wonder", "inc_knowledge","ref_identity")
+)
+
+cognitive.evaluation <- scoreItems(my.keys.list, cog_evaluation, impute = "none")
+#cognitive.evaluation
+
+df1 <- cbind(df1, cognitive.evaluation$scores)
+
+
+```
+
+### Internal consistency
+
+Different metrics for internal consistency (as reported in Table 5):
+
+```{r}
+#internal consistencies 
+cognitive.evaluation$alpha
+cognitive.evaluation$G6
+cognitive.evaluation$av.r
+
+#now for each country
+eval_iran <- df1[df1$country == "Iran", 26:33]
+iran_eval <- scoreItems(my.keys.list, eval_iran, impute = "none")
+iran_eval$alpha
+iran_eval$G6
+iran_eval$av.r
+
+eval_malaysia <- df1[df1$country == "Malaysia", 26:33]
+malaysia_eval <- scoreItems(my.keys.list, eval_malaysia, impute = "none")
+malaysia_eval$alpha
+malaysia_eval$G6
+malaysia_eval$av.r
+
+eval_US <- df1[df1$country == "US", 26:33]
+US_eval <- scoreItems(my.keys.list, eval_US, impute = "none")
+US_eval$alpha
+US_eval$G6
+US_eval$av.r
+
+#correlation between components
+cor(cognitive.evaluation[["scores"]], use = "complete.obs")
+cor(malaysia_eval[["scores"]], use = "complete.obs")
+cor(iran_eval[["scores"]], use = "complete.obs")
+cor(US_eval[["scores"]], use = "complete.obs")
+
+```
+
+
+<b>Creating a long dataframe based on the two evaluation scores</b>
+
+```{r}
+#a dataframe with relevant variables
+    eval_df <- df1[,c("country", "sub_id", "purchase_type", "mat_vs_exp", "sol_vs_soc" ,"rel_enhance","self_elevate")]  
+    colnames(eval_df) <- c("country", "sub_id", "purchase_type", "mat_vs_exp", "sol_vs_soc", "rel_enhance","self_elevate")
+    str(eval_df)
+
+#making the dataframe long  
+    eval_df_long <- tidyr::gather(eval_df, "eval_type", "eval_score", 6:7) #6:7 must be the evaluation variables
+    eval_df_long$eval_type <- as.factor(eval_df_long$eval_type)
+    str(eval_df_long)
+    
+```
+
+
+### Model3
+_IV: material vs. experiential - Outcome: Evaluations_
+
+```{r warning=FALSE, message=FALSE}
+contrasts(eval_df_long$mat_vs_exp) <- contr.sum
+contrasts(eval_df_long$country) <- contr.sum
+contrasts(eval_df_long$eval_type) <- contr.sum
+
+#First, we run the omnibus model in lmer
+model3 <- lmer(eval_score ~ mat_vs_exp*eval_type*country + (1 | sub_id), data = eval_df_long)
+#summary(model3)
+#anova(model3, type = "III")
+
+#Next, we pipe the model into emmeans to run contrasts
+    #adjustments to emmeans due to large sample size
+    emm_options(pbkrtest.limit = 6000, lmerTest.limit = 6000)
+
+    #running the main model in emmeans
+    em_model3 <- emmeans::emmeans(model3, ~mat_vs_exp*eval_type*country) 
+    
+    #the plot of all data
+    plot(em_model3, comparisons = TRUE, xlab = "Means", ylab = "Ratings for each Purchase Type")
+    
+    
+    #difference between material and experiential in each country (Table 4)
+          #Malaysia  
+             (em_model3 %>% 
+        pairs(simple = c("mat_vs_exp"), combine = TRUE, adjust = "holm"))[1:2] 
+    
+            ((em_model3 %>% 
+        pairs(simple = c("mat_vs_exp"), combine = TRUE, adjust = "holm"))[1:2] ) %>% 
+      confint(adjust = "mvt")
+         
+         #Iran
+          (em_model3 %>% 
+        pairs(simple = c("mat_vs_exp"), combine = TRUE, adjust = "holm"))[3:4]
+
+              ((em_model3 %>% 
+        pairs(simple = c("mat_vs_exp"), combine = TRUE, adjust = "holm"))[3:4]) %>% 
+      confint(adjust = "mvt")
+    
+          #US
+             (em_model3 %>% 
+        pairs(simple = c("mat_vs_exp"), combine = TRUE, adjust = "holm"))[5:6] 
+
+            ((em_model3 %>% 
+        pairs(simple = c("mat_vs_exp"), combine = TRUE, adjust = "holm"))[5:6] ) %>% 
+        confint(adjust = "mvt")
+
+         
+```
+
+# Four purchase categories
+
+Running the same models, but for the four categories, i.e., material-solitary, material-social, experiential-solitary, experiential-social
+
+## Outcome: Emotions
+
+```{r warning=FALSE, message=FALSE}
+
+contrasts(emotion_df_long$purchase_type) <- contr.sum
+contrasts(emotion_df_long$country) <- contr.sum
+contrasts(emotion_df_long$emotion_type) <- contr.sum
+
+#Omnibus model in lmer
+model1_4x <- lmer(emo_score ~ purchase_type*emotion_type*country + (1 | sub_id), data = emotion_df_long)
+#summary(model1_4x)
+#anova(model1_4x, type = "III")
+
+#Sending the omnibus model to emmeans for contrast analyses
+    #adjustments to emmeans due to large sample size
+    emm_options(pbkrtest.limit = 6000, lmerTest.limit = 6000)
+
+    #running the main model in emmeans
+    em_model1_4x <- emmeans::emmeans(model1_4x, ~purchase_type*emotion_type*country) 
+    
+    #the plot of all data
+    plot(em_model1_4x, comparisons = TRUE, xlab = "Means", ylab = "Intensity of Emotion Type for each Purchase Type")
+      
+
+    #difference between four purchase types in each country (Table 5 and Table OS6)
+       em_model1_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm")
+       #confidence intervals: Malaysia
+       confint((em_model1_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm"))[1:6], adjust = "none")
+       confint((em_model1_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm"))[7:12], adjust = "none")
+      #confidence intervals: Iran
+       confint((em_model1_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm"))[13:18], adjust = "none")
+       confint((em_model1_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm"))[19:24], adjust = "none")
+      #confidence intervals: US  
+       confint((em_model1_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm"))[25:30], adjust = "none")
+       confint((em_model1_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm"))[31:36], adjust = "none")
+        
+
+  
+#getting descriptives for the excel graph (Figure 1)
+  emotion_descriptives <- psych::describeBy(emotion_df_long$emo_score, group = list(emotion_df_long$sol_vs_soc, emotion_df_long$mat_vs_exp, emotion_df_long$country,emotion_df_long$emotion_type), mat = TRUE)
+  
+#You can run the line below to save the descriptives into a .csv file and graph it in excel
+    #write.csv(emotion_descriptives, "emotion_desc_for_graph.csv")
+
+```
+
+
+
+## Outcome: Happiness
+
+```{r warning=FALSE, message=FALSE}
+contrasts(hap_df_long$purchase_type) <- contr.sum
+contrasts(hap_df_long$country) <- contr.sum
+contrasts(hap_df_long$hap_type) <- contr.sum
+
+#Omnibus model in lmer
+model2_4x <- lmer(hap_score ~ purchase_type*hap_type*country + (1 | sub_id), data = hap_df_long)
+#summary(model2_4x)
+#anova(model2_4x, type = "III")
+
+#Import the model into emmeans for contrast analyses
+    #adjustments to emmeans due to large sample size
+    emm_options(pbkrtest.limit = 6000, lmerTest.limit = 6000)
+
+    #running the main model in emmeans
+    em_model2_4x <- emmeans::emmeans(model2_4x, ~purchase_type*hap_type*country) 
+    
+    #the plot of all data
+    plot(em_model2_4x, comparisons = TRUE, xlab = "Means", ylab = "Ratings for each category")
+      
+    
+    #difference between four purchase types in each country (Table 5 and Table OS5)
+       em_model2_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm")
+          
+       #confidence intervals: Malaysia
+        confint((em_model2_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm"))[1:6], adjust = "none")
+        confint((em_model2_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm"))[7:12], adjust = "none")
+        #confidence intervals: Iran
+        confint((em_model2_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm"))[13:18], adjust = "none")
+        confint((em_model2_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm"))[19:24], adjust = "none")
+        #confidence intervals: US
+        confint((em_model2_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm"))[25:30], adjust = "none")
+        confint((em_model2_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm"))[31:36], adjust = "none")  
+        
+        
+  
+  #getting descriptives for the excel graphs (Figure 1)
+  hap_descriptives <- psych::describeBy(hap_df_long$hap_score, group = list(hap_df_long$sol_vs_soc, hap_df_long$mat_vs_exp, hap_df_long$country,hap_df_long$hap_type), mat = TRUE)
+  
+#You can run the line below to save the descriptives into a .csv file and graph it in excel
+    #write.csv(hap_descriptives, "hap_desc_for_graph.csv")
+```
+
+
+## Outcome: Cognitive Evaluations
+
+```{r warning=FALSE, message=FALSE}
+contrasts(eval_df_long$purchase_type) <- contr.sum
+contrasts(eval_df_long$country) <- contr.sum
+contrasts(eval_df_long$eval_type) <- contr.sum
+
+#Omnibus model in lmer
+model3_4x <- lmer(eval_score ~ purchase_type*eval_type*country + (1 | sub_id), data = eval_df_long)
+#summary(model3_4x)
+#anova(model3_4x, type = "III")
+
+#Move the model to emmeans for contrast analyses
+    #adjustments to emmeans due to large sample size
+    emm_options(pbkrtest.limit = 6000, lmerTest.limit = 6000)
+
+    #running the main model in emmeans
+    em_model3_4x <- emmeans::emmeans(model3_4x, ~purchase_type*eval_type*country) 
+    
+    #the plot of all data
+    plot(em_model3_4x, comparisons = TRUE, xlab = "Means", ylab = "Ratings for each category")
+      
+    
+    #difference between four purchase types in each country (Table 5 and Table OS7)
+       em_model3_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm")
+        
+       #Now getting the confidence intervals in each country  
+        confint((em_model3_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm"))[1:6], adjust = "none")
+        confint((em_model3_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm"))[7:12], adjust = "none")
+        
+        confint((em_model3_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm"))[13:18], adjust = "none") 
+        confint((em_model3_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm"))[19:24], adjust = "none")
+        
+        confint((em_model3_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm"))[25:30], adjust = "none")
+        confint((em_model3_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm"))[31:36], adjust = "none") 
+
+        
+  
+  #getting descriptives for the excel graph (Figure 1)
+  eval_descriptives <- psych::describeBy(eval_df_long$eval_score, group = list(eval_df_long$sol_vs_soc, eval_df_long$mat_vs_exp, eval_df_long$country,eval_df_long$eval_type), mat = TRUE)
+  
+
+#You can run the line below to save the descriptives into a .csv file and graph it in excel
+    #write.csv(eval_descriptives, "eval_desc_for_graph.csv")
+```
+
+# Distribution of p-values
+_Code to reproduce the two graphs in the Online Supplement (Figure OS2)_
+
+```{r}
+#gathering all the p-values
+        df_pvalues1 <-  (em_model1_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm")) %>% 
+          as.data.frame()
+
+        df_pvalues2 <-  (em_model2_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm")) %>% 
+          as.data.frame()
+
+        df_pvalues3 <-  (em_model3_4x %>% 
+          pairs(simple = c("purchase_type"), combine = TRUE, adjust = "holm")) %>% 
+          as.data.frame()
+
+        pvalues <- c(df_pvalues1$p.value, df_pvalues2$p.value, df_pvalues3$p.value)
+
+#Distribution of all the p-values
+
+hist(pvalues,
+     main = NA, 
+     xlab="p-value",
+      border="blue", 
+     col="green", 
+     las = 0.1,
+     ylim = c(0, 35),
+     breaks = c(seq(0, 1, 0.01)))
+
+
+#Selecting p-values that were reported as significant (p < .05)
+
+sig_pvalues <- c(df_pvalues1$p.value, df_pvalues2$p.value, df_pvalues3$p.value) %>% 
+  as.data.frame() 
+sig_pvalues <- dplyr::filter(sig_pvalues, sig_pvalues$. <= .05)
+
+#Distribution of p-values that were reported as significant
+hist(sig_pvalues$.,
+    main = NA, 
+     xlab="p-value",
+     border="blue", 
+     col="green", 
+     las = 0.1,
+     xlim = c(0,0.05),
+     ylim = c(0, 25),
+     c(seq(0, 0.05, 0.0005)))
+
+```
